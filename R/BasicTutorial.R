@@ -89,3 +89,99 @@ View(birth6)
 #Remove entries with all 0s
 blogS <- dplyr::select_if(blog, function(x) !all(x==0))
 View(blogS)
+
+#5 sample rows without replacement
+set.seed(123)
+print(birth[sample(nrow(birth), 5, replace = FALSE),])
+
+rnorm(5, mean=5, sd=0.1)
+
+rnorm(168, mean=birth$X2002, sd=0.1)#Don't have to give mean(birth$X2002)
+
+dnorm(c(-1,0,1))
+
+#Log-likelihood formula for Exponential model
+loglik <- function(w,w0){
+  prob <- sum(birth$X2003-w*birth$X2002-w0)
+  return(prob)
+}
+loglik(1,1)
+
+#Linear Reg - 6
+mod <- lm(X2020 ~ X2002 + X2003 +X2004, data = birth)
+coef(mod)
+pred <- predict(mod)
+MSE <- mean((pred-birth$X2020)^2)
+MSE
+
+#Create new columns for Sex
+library(fastDummies)
+dummies <- dummy_cols(birth, select_columns = c("sex", "region"))
+colnames(dummies)
+dummies[,stringr::str_which(colnames(dummies), 'sex')]
+#Can be used for count instead of group by
+
+
+#Caret package for splitting and scaling
+library(caret)
+train <- birth %>%
+  select(X2002:X2020) %>%
+  slice(1:50)
+dim(train)
+test <- birth %>%
+  select(X2002:X2020) %>%
+  slice(51:100)
+dim(test)
+
+params <- caret::preProcess(train)
+trainS <- predict(params, train)
+testS <- predict(params, test)
+
+
+#Logistic Regression 
+train <- birth %>%
+  select(X2002:X2004, sex)
+dim(train)
+model <- glm(as.factor(sex)~., #Need to change to 0-1
+             data = train, 
+             family = 'binomial') #Family should be binomial
+prob <- predict(model, 
+                type = 'response') #type needs to be response for probability
+pred <- ifelse(prob>0.5, 'Girl', 'Boy')
+#Confusion matrix
+table(train$sex, pred)
+summary(model)
+
+#KNN Classification
+train <- birth %>%
+  select(X2002:X2010, sex)
+library(kknn)
+model = kknn::kknn(formula = as.factor(sex)~.,#Needs to be a factor
+                   train = train,
+                   test = train,
+                   k=10,
+                   kernel = "rectangular")
+summary(model)
+pred <- model$fitted.values  
+pred
+
+#Optimization function
+temp_fn <- function(x1,x2){
+  return(((x1-1)^2) + ((x2-2)^2))
+}
+x1 <- y1 <- seq(from = -20, by = 1, to = 20)
+z <- outer(x1, y1, temp_fn)#Takes each value of x1 & y1 and applies the function
+persp(x1, y1, z) #Perspective function to plot 3-D
+
+fn_optimize <- function(x){#Define only 1 parameter here.
+  x1 <- x[1]
+  x2 <- x[2]
+  return(((x1-1)^2) + ((x2-2)^2))
+}
+
+res <- optim(c(0,0),#Starting point
+             fn = fn_optimize, #Function
+             method = 'BFGS' #Optimization method
+             )
+res$par #Parameter which made the value converge to 0
+res$value #The minimal value found, which is close to 0
