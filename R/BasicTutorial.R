@@ -3,6 +3,7 @@ birth = read.csv("./Data/birthstatistics.csv")
 blog = read.csv("./Data/blogData_test.csv", header = FALSE)
 tecator = readxl::read_excel("./Data/tecator.xls")
 write.csv(tecator, file = "./Data/tecator.csv",row.names = FALSE)
+
 #Basic data manipulation
 str(tecator)
 tecator1 = as.data.frame(tecator)
@@ -12,6 +13,7 @@ rownames(tecator1)
 colnames(tecator1)[1] <- "ID"
 tecator1[(tecator1$Channel1 > 3 & tecator1$Channel2 > 3), 5:8]
 tecator1$ID <- NULL
+
 #Divide by means
 col_indx <- stringr::str_which(colnames(tecator1), "Channel")
 means <- colMeans(tecator1[,col_indx])
@@ -126,14 +128,22 @@ dummies[,stringr::str_which(colnames(dummies), 'sex')]
 library(caret)
 train <- birth %>%
   select(X2002:X2020) %>%
-  slice(1:50)
+  slice(1:50) #Using Slice
 dim(train)
 test <- birth %>%
   select(X2002:X2020) %>%
   slice(51:100)
 dim(test)
+#Using caret::createDataPartition
+train_index <- caret::createDataPartition(y = birth$sex, 
+                                          p = 0.95,
+                                          list = FALSE)
+test <- birth[-train_index,]
+train <- birth[train_index,]
+dim(test)
+dim(train)
 
-params <- caret::preProcess(train)
+params <- caret::preProcess(train)#Use training data to get scaling factors
 trainS <- predict(params, train)
 testS <- predict(params, test)
 
@@ -150,6 +160,7 @@ prob <- predict(model,
 pred <- ifelse(prob>0.5, 'Girl', 'Boy')
 #Confusion matrix
 table(train$sex, pred)
+print(as.factor(train$sex))
 summary(model)
 
 #KNN Classification
@@ -157,8 +168,8 @@ train <- birth %>%
   select(X2002:X2010, sex)
 library(kknn)
 model = kknn::kknn(formula = as.factor(sex)~.,#Needs to be a factor
-                   train = train,
-                   test = train,
+                   train,
+                   train,
                    k=10,
                    kernel = "rectangular")
 summary(model)

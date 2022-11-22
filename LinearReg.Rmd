@@ -1,0 +1,174 @@
+---
+title: "LinearReg"
+output: html_document
+date: '2022-11-18'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+### Question 2
+a) Estimate the Training Error and Test Error
+```{r,eval=TRUE,echo=FALSE}
+set.seed(12345)
+#Read csv
+data <- read.csv(file = 'parkinsons.csv', header = T)
+data <- data %>% 
+  dplyr::select(motor_UPDRS,starts_with("Jitter"),starts_with("Shimmer"),
+                NHR, HNR, RPDE, DFA, PPE)
+#Divide training and test data in 60-40 ratio
+n <- nrow(data)
+train_index <- sample(1:n, size=floor(n*0.6))
+train <- data[train_index,]
+test <- data[-train_index,]
+#Scaling the data
+params <- caret::preProcess(train)
+Stest <- predict(params, test)
+Strain <- predict(params, train)
+
+mod <- lm(formula = motor_UPDRS~-1+., data = Strain)#model without intercept
+test_predict <- predict(mod,newdata = Stest)
+train_predict <- predict(mod,newdata = Strain)
+#MSE - train
+mse_train <- mean((train_predict-Strain$motor_UPDRS)^2) #0.9016564
+cat('Training Error:', mse_train)
+
+#MSE - test
+mse_test <- mean((test_predict-Stest$motor_UPDRS)^2) #0.8996531 - Without intercept
+cat('Test Error: ',mse_test)
+```
+b) Which variables contribute significantly?
+
+The following variables have a p-value less than the significance level of 0.05, hence they can be considered as statistically significant:
+```{r,eval=TRUE,echo=TRUE}
+p_df <- data.frame(p_val = summary(mod)$coefficients[,4]) %>%
+  filter(p_val < 0.05) %>%
+  arrange(p_val)
+print(p_df)
+```
+```{r,eval=TRUE,echo=FALSE}
+Loglikelihood <- function(theta, sigma){
+  n <- nrow(Strain)
+  x <- as.matrix(Strain[,-1])
+  return(-n*log(sigma*sqrt(2*pi))-
+    (1/(2*sigma^2))*sum((Strain$motor_UPDRS-(x%*%(theta)))^2))
+}
+Ridge <- function(x, lambda){
+  theta <- x[1:16]
+  sigma <- x[17]
+  # lambda <- x[18]
+  return(-Loglikelihood(theta,sigma) + (lambda * sum(theta * theta)))
+  # return(-Loglikelihood(theta,sigma))
+}
+
+RidgeOpt <- function(lambdas){
+  # parameter <- c(rep(1,17),lambda)
+  parameter <- c(rep(0,16))
+  parameter <- c(parameter,1)
+  mse_df <- as.data.frame(matrix(nrow = 0, ncol = 4))
+  colnames(mse_df) <- c('lambda', 'data_type', 'mse', 'rsqr')
+  coef_df <- as.data.frame(matrix(nrow=0, ncol=3))
+  colnames(coef_df) <- c('lambda','coef', 'val')
+  for (i in lambdas) {
+    res <- optim(parameter, 
+                 fn=Ridge,
+                 lambda = i, 
+                 method = "BFGS") #Get the optimal theta & sigma 
+    theta <- res$par[1:16]
+    #MSE for training data
+    train_x <- as.matrix(Strain[,-1])
+    train_y_hat <- train_x %*% theta
+    train_mse = mean((Strain$motor_UPDRS-train_y_hat)^2)
+    train_rsq <- cor(Strain$motor_UPDRS, train_y_hat)^2
+    
+    #MSE for training data
+    test_x <- as.matrix(Stest[,-1])
+    test_y_hat <- test_x %*% theta
+    test_mse <- mean((Stest$motor_UPDRS-test_y_hat)^2)
+    test_rsq <- cor(Stest$motor_UPDRS, test_y_hat)^2
+    
+    mse_df <- rbind(mse_df, 
+                    data.frame(lambda = i, 
+                               data_type = 'train',
+                               mse = train_mse,
+                               rsqr = train_rsq
+                    )
+    )
+    mse_df <- rbind(mse_df, 
+                    data.frame(lambda = i, 
+                               data_type = 'test',
+                               mse = test_mse,
+                               rsqr = test_rsq
+                    ))
+    coef_df <- rbind(
+      coef_df,
+      data.frame(lambda = i, coef = 'DFA', val = theta[15]),
+      data.frame(lambda = i, coef = 'PPE', val = theta[16]),
+      data.frame(lambda = i, coef = 'HNR', val = theta[13]),
+      data.frame(lambda = i, coef = 'NHR', val = theta[12]),
+      data.frame(lambda = i, coef = 'Shimmer.APQ11', val = theta[10]),
+      data.frame(lambda = i, coef = 'Jitter.Abs.', val = theta[2]),
+      data.frame(lambda = i, coef = 'Shimmer.APQ5', val = theta[9]),
+      data.frame(lambda = i, coef = 'Shimmer', val = theta[6])
+      )
+  }
+  mse_df <- mse_df %>% arrange(data_type, mse)
+  cat('MSE for Training and Testing data using ridge reg:\n')
+  print(mse_df)
+  return(list(mse_df = mse_df, coef_df = coef_df))
+}
+```
+### Question 4
+a) Use the estimated parameters to predict the motor_UPDRS values for training and test data and report the training and test MSE values.
+```{r,eval=TRUE,echo=FALSE}
+lambdas = c(1, 100, 1000)
+final_list <- RidgeOpt(lambdas)
+```
+b) Which penalty parameter is most appropriate among the selected ones
+```{r,eval=TRUE,echo=TRUE}
+ggplot(final_list$mse_df, aes(x=lambda, y = mse)) +
+  geom_line(aes(color = data_type, linetype = data_type))
+```
+
+As seen above, lambda = 100 gives the least test error and hence is relatively the best.
+
+c) Compute and compare the degrees of freedom of these models and make appropriate conclusions
+```{r,eval=TRUE,echo=FALSE}
+DF <- function(lambdas){
+  #Slide 22 - has the hat matrix for Ridge Regression
+  #To compute the df based on training data
+  x <- as.matrix(Strain[-1])
+  dim(x)
+  degfree_df <- data.frame(matrix(ncol=2, nrow = 0))
+  colnames(degfree_df) <- c('lambda', 'df')
+  for (i in lambdas) {
+    hat_mat <- x %*% solve( t(x)%*%x + i*diag(ncol(x)) ) %*% t(x)
+    degfree_df <- rbind(degfree_df,
+                        data.frame(lambda = i, df = sum(diag(hat_mat)))  
+    )
+  }
+  return(degfree_df)
+}
+df <- DF(lambdas)
+df_final <- final_list$mse_df %>%
+  filter(data_type == 'train') %>%
+  inner_join(x=df, y=., by = 'lambda') %>%
+  gather(.,key = "metric_type",
+         value = "metric_value",
+         -lambda, -df, -data_type) %>%
+  arrange(metric_type, df)
+```
+```{r,eval=TRUE,echo=TRUE}
+ggplot(data = df_final, aes(x = df, y = metric_value)) +
+  geom_line(aes(color = metric_type))
+print(df_final)
+```
+
+As seen as degrees of freedom increases, the MSE decreases, because there are 
+more features to explain. Also, the R2 also increases. But at 9DF, we 
+see the graph stabilizing without much decrease/increase. Hence, this could be 
+a good point to select lambda, which in this case is 100.
