@@ -15,6 +15,7 @@ w <- rep(1/nrow(data), nrow(data))
 B <- 100
 mod_lst <- list()
 alpha <- c()
+e_train <- c()
 for (b in 1:B) {
   #Step 3: Fit weak learner and predict the y_hat
   mod_lst[[b]] <- rpart(Species ~., data = data, 
@@ -23,26 +24,28 @@ for (b in 1:B) {
                    newdata = data[,c('Length', 'Width')], type = 'class')
   #Step 4: Evaluate the error. If correctly classified, 0, else weight
   error <- ifelse(y_hat == data$Species, 0, w)
-  e_train <- sum(error)
-  print(e_train)
+  e_train <- c(e_train, sum(error))
   
   #Step 5: Calculate confidence/alpha
-  alpha <- c(alpha, 0.5 * log((1 - e_train)/e_train))
+  alpha <- c(alpha, 0.5 * log((1 - e_train[b])/e_train[b]))
   
   #Step 6: Calculate new weights
   for (i in 1:nrow(data)) {
     #If correctly classified, then lesser weight
     if (y_hat[i] == data$Species[i]) {
-      w[i] <- w[i] * exp(-alpha[j])
+      w[i] <- w[i] * exp(-alpha[b])
     }else{
       #If in-correctly classified, then higher weight
-      w[i] <- w[i] * exp(alpha[j])
+      w[i] <- w[i] * exp(alpha[b])
     }
   }
   
   #Step 7: Normalize and update the weight
   w <- w/sum(w)
 }
+#Plot of Error vs Alpha: Low error for a stump means, it was a good stump and
+#it should get a higher alpha/confidence
+plot(x = e_train, y = alpha)
 
 # Prediction
 new_data <- data[,c('Length', 'Width')]
@@ -50,7 +53,7 @@ temp_pred <- sapply(mod_lst, function(x) as.numeric(
   as.character(predict(x, newdata =new_data, type = 'class')))
 )
 temp_pred <- t(alpha * t(temp_pred))
-pred <- sign(rowSums(temp_pred))
+pred <- sign(rowSums(temp_pred))#We take the sign for classification
 
 eval_model(pred, data$Species)
 
