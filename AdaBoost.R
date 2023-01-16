@@ -18,6 +18,8 @@ alpha <- c()
 e_train <- c()
 for (b in 1:B) {
   #Step 3: Fit weak learner and predict the y_hat
+  #Weight w is learned sequentially and this is what corrects subsequent models.
+  #This is how Adaboost learns the mistakes made by previous models.
   mod_lst[[b]] <- rpart(Species ~., data = data, 
                         weights = w, maxdepth = 1, method = "class")
   y_hat <- predict(mod_lst[[b]], 
@@ -52,7 +54,9 @@ new_data <- data[,c('Length', 'Width')]
 temp_pred <- sapply(mod_lst, function(x) as.numeric(
   as.character(predict(x, newdata =new_data, type = 'class')))
 )
+#Multiply each prediction with the corresponding confidence value
 temp_pred <- t(alpha * t(temp_pred))
+#Sum up the above found result
 pred <- sign(rowSums(temp_pred))#We take the sign for classification
 
 eval_model(pred, data$Species)
