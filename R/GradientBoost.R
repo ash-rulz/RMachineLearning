@@ -55,3 +55,5 @@ for (i in 2:nrounds) {
   #Get the residual again
   df[[paste0('resid_', i)]] <- df$mpg - df$pred
 }
+#As seen in the below df, with each round the RMSE is going down
+rmse_df
